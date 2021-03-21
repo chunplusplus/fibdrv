@@ -122,13 +122,20 @@ static void string_number_add(xs *a, xs *b, xs *out)
 
 static xs fib_sequence(long long k)
 {
-    xs f[k + 2];
+    xs f[k + 1];
     f[0] = *xs_tmp("0");
     f[1] = *xs_tmp("1");
     for (int i = 2; i <= k; i++) {
         string_number_add(&f[i - 1], &f[i - 2], &f[i]);
     }
-    return f[k];
+
+    xs fib;
+    xs_copy(&fib, &f[k]);
+
+    for (int i = 0; i <= k; i++)
+        xs_free(&f[i]);
+
+    return fib;
 }
 
 static xs fib_time_proxy(long long k)
@@ -166,7 +173,11 @@ static ssize_t fib_read(struct file *file,
 
     // printk(KERN_INFO "fib_read %llu, %s\n", *offset, fib);
 
-    return copy_to_user(buf, fib, strlen(fib) + 1);
+    copy_to_user(buf, fib, strlen(fib) + 1);
+
+    xs_free(&result);
+
+    return 0;
 }
 
 /* write operation is skipped */
