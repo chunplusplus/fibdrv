@@ -1,5 +1,4 @@
 #include <fcntl.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,9 +9,8 @@
 
 int main()
 {
-    char buf[500];
     char write_buf[] = "testing writing";
-    int offset = 500; /* TODO: try test something bigger than the limit */
+    int offset = 100; /* TODO: try test something bigger than the limit */
 
     int fd = open(FIB_DEV, O_RDWR);
     if (fd < 0) {
@@ -21,14 +19,13 @@ int main()
     }
 
     for (int i = 0; i <= offset; i++) {
+        long long sz, tt;
         lseek(fd, i, SEEK_SET);
-        read(fd, buf, 500);
-
-        printf("fib(%d): %s\n", i, buf);
-
-        long long sz = write(fd, write_buf, strlen(write_buf));
-        printf("time %lld nanoseconds (10^-9 second)\n", sz);
+        sz = write(fd, write_buf, 0); /* recursion w/ cache */
+        tt = write(fd, write_buf, 1); /* fast doubling */
+        printf("%d %lld %lld\n", i, sz, tt);
     }
+
     close(fd);
     return 0;
 }

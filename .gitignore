@@ -29,3 +29,10 @@ dkms.conf
 # test-oriented
 client
 out
+client_plot
+client_statistic
+
+# gunplot
+*.png
+plot_input
+plot_input_statistic
