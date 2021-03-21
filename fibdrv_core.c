@@ -4,8 +4,11 @@
 #include <linux/init.h>
 #include <linux/kdev_t.h>
 #include <linux/kernel.h>
+#include <linux/ktime.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/uaccess.h>
+#include "xs.h"
 
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("National Cheng Kung University, Taiwan");
@@ -17,26 +20,123 @@ MODULE_VERSION("0.1");
 /* MAX_LENGTH is set to 92 because
  * ssize_t can't fit the number > 92
  */
-#define MAX_LENGTH 92
+#define MAX_LENGTH 500
 
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
 
-static long long fib_sequence(long long k)
+static ktime_t kt;
+
+#define XOR_SWAP(a, b, type) \
+    do {                     \
+        type *__c = (a);     \
+        type *__d = (b);     \
+        *__c ^= *__d;        \
+        *__d ^= *__c;        \
+        *__c ^= *__d;        \
+    } while (0)
+
+static void __swap(void *a, void *b, size_t size)
 {
-    /* FIXME: use clz/ctz and fast algorithms to speed up */
-    long long f[k + 2];
+    if (a == b)
+        return;
 
-    f[0] = 0;
-    f[1] = 1;
+    switch (size) {
+    case 1:
+        XOR_SWAP(a, b, char);
+        break;
+    case 2:
+        XOR_SWAP(a, b, short);
+        break;
+    case 4:
+        XOR_SWAP(a, b, unsigned int);
+        break;
+    case 8:
+        XOR_SWAP(a, b, unsigned long);
+        break;
+    default:
+        /* Do nothing */
+        break;
+    }
+}
 
-    for (int i = 2; i <= k; i++) {
-        f[i] = f[i - 1] + f[i - 2];
+static void reverse_str(char *str, size_t n)
+{
+    for (int i = 0; i < (n >> 1); i++)
+        __swap(&str[i], &str[n - i - 1], sizeof(char));
+}
+
+static void string_number_add(xs *a, xs *b, xs *out)
+{
+    char *data_a, *data_b;
+    size_t size_a, size_b;
+    int i, carry = 0;
+    int sum;
+
+    /*
+     * Make sure the string length of 'a' is always greater than
+     * the one of 'b'.
+     */
+    if (xs_size(a) < xs_size(b))
+        __swap((void *) &a, (void *) &b, sizeof(void *));
+
+    data_a = xs_data(a);
+    data_b = xs_data(b);
+
+    size_a = xs_size(a);
+    size_b = xs_size(b);
+
+    reverse_str(data_a, size_a);
+    reverse_str(data_b, size_b);
+
+    char buf[size_a + 2];
+
+    for (i = 0; i < size_b; i++) {
+        sum = (data_a[i] - '0') + (data_b[i] - '0') + carry;
+        buf[i] = '0' + sum % 10;
+        carry = sum / 10;
     }
 
+    for (i = size_b; i < size_a; i++) {
+        sum = (data_a[i] - '0') + carry;
+        buf[i] = '0' + sum % 10;
+        carry = sum / 10;
+    }
+
+    if (carry)
+        buf[i++] = '0' + carry;
+
+    buf[i] = 0;
+
+    reverse_str(buf, i);
+
+    /* Restore the original string */
+    reverse_str(data_a, size_a);
+    reverse_str(data_b, size_b);
+
+    if (out)
+        *out = *xs_tmp(buf);
+}
+
+static xs fib_sequence(long long k)
+{
+    xs f[k + 2];
+    f[0] = *xs_tmp("0");
+    f[1] = *xs_tmp("1");
+    for (int i = 2; i <= k; i++) {
+        string_number_add(&f[i - 1], &f[i - 2], &f[i]);
+    }
     return f[k];
+}
+
+static xs fib_time_proxy(long long k)
+{
+    kt = ktime_get();
+    xs result = fib_sequence(k);
+    kt = ktime_sub(ktime_get(), kt);
+    return result;
 }
 
 static int fib_open(struct inode *inode, struct file *file)
@@ -60,7 +160,13 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
-    return (ssize_t) fib_sequence(*offset);
+    xs result = fib_time_proxy(*offset);
+
+    char *fib = xs_data(&result);
+
+    // printk(KERN_INFO "fib_read %llu, %s\n", *offset, fib);
+
+    return copy_to_user(buf, fib, strlen(fib) + 1);
 }
 
 /* write operation is skipped */
@@ -69,7 +175,7 @@ static ssize_t fib_write(struct file *file,
                          size_t size,
                          loff_t *offset)
 {
-    return 1;
+    return ktime_to_ns(kt);
 }
 
 static loff_t fib_device_lseek(struct file *file, loff_t offset, int orig)
