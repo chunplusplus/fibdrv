@@ -11,7 +11,7 @@
 int main()
 {
     char buf[500];
-    char write_buf[] = "testing writing";
+    // char write_buf[] = "testing writing";
     int offset = 500; /* TODO: try test something bigger than the limit */
 
     int fd = open(FIB_DEV, O_RDWR);
@@ -22,11 +22,8 @@ int main()
 
     for (int i = 0; i <= offset; i++) {
         lseek(fd, i, SEEK_SET);
-        read(fd, buf, 500);
-
+        long long sz = read(fd, buf, 500);
         printf("fib(%d): %s\n", i, buf);
-
-        long long sz = write(fd, write_buf, strlen(write_buf));
         printf("time %lld nanoseconds (10^-9 second)\n", sz);
     }
     close(fd);
