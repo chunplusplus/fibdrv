@@ -27,7 +27,7 @@ static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
 
-static ktime_t kt;
+static ktime_t kt_proxy;
 
 #define XOR_SWAP(a, b, type) \
     do {                     \
@@ -66,6 +66,67 @@ static void reverse_str(char *str, size_t n)
 {
     for (int i = 0; i < (n >> 1); i++)
         __swap(&str[i], &str[n - i - 1], sizeof(char));
+}
+
+static void string_number_sub(xs *a, xs *b, xs *out)
+{
+    char *data_a, *data_b;
+    size_t size_a, size_b;
+    int i, carry = 0;
+    int sub;
+
+    /*
+     * In this fibonacci case, negative number will not exist
+     * Make sure the string length of 'a' is always greater than
+     * the one of 'b'.
+     */
+    if (xs_size(a) < xs_size(b))
+        __swap((void *) &a, (void *) &b, sizeof(void *));
+
+    data_a = xs_data(a);
+    data_b = xs_data(b);
+
+    size_a = xs_size(a);
+    size_b = xs_size(b);
+
+    reverse_str(data_a, size_a);
+    reverse_str(data_b, size_b);
+
+    char buf[size_a + 2];
+
+    for (i = 0; i < size_b; i++) {
+        int digit_a = (data_a[i] - '0') - carry;
+        int digit_b = (data_b[i] - '0');
+        carry = 0;
+
+        if (digit_a < digit_b) {
+            carry = 1;
+            digit_a += 10;
+        }
+        sub = digit_a - digit_b;
+        buf[i] = '0' + sub;
+    }
+
+    for (i = size_b; i < size_a; i++) {
+        sub = (data_a[i] - '0') - carry;
+        carry = 0;
+        if (sub < 0) {
+            carry = 1;
+            sub += 10;
+        }
+        buf[i] = '0' + sub;
+    }
+
+    buf[i] = 0;
+
+    reverse_str(buf, i);
+
+    /* Restore the original string */
+    reverse_str(data_a, size_a);
+    reverse_str(data_b, size_b);
+
+    if (out)
+        *out = *xs_tmp(buf);
 }
 
 static void string_number_add(xs *a, xs *b, xs *out)
@@ -120,6 +181,93 @@ static void string_number_add(xs *a, xs *b, xs *out)
         *out = *xs_tmp(buf);
 }
 
+static void string_number_mult(xs *a, xs *b, xs *out)
+{
+    char *data_a, *data_b;
+    size_t size_a, size_b;
+    int i, j, carry;
+
+    /*
+     * Make sure the string length of 'a' is always greater than
+     * the one of 'b'.
+     */
+    if (xs_size(a) < xs_size(b))
+        __swap((void *) &a, (void *) &b, sizeof(void *));
+
+    data_a = xs_data(a);
+    data_b = xs_data(b);
+
+    size_a = xs_size(a);
+    size_b = xs_size(b);
+
+    xs mult = *xs_tmp("0");
+    xs zero = *xs_tmp("");
+    for (i = size_b - 1; i >= 0; i--) {
+        int digit_b = (data_b[i] - '0');
+
+        if (digit_b != 0) {
+            // xs t = *xs_tmp("0");
+            // for (int j = 0; j < digit_b; j++) {
+            //    string_number_add(&t, a, &t);
+            //}
+
+            char buf[size_a + 2];
+            carry = 0;
+            for (j = 0; j < size_a; j++) {
+                int digit_a = (data_a[size_a - j - 1] - '0') * digit_b + carry;
+                carry = digit_a / 10;
+                buf[j] = (digit_a % 10) + '0';
+            }
+
+            if (carry > 0) {
+                buf[j] = carry + '0';
+                j++;
+            }
+
+            buf[j] = '\0';
+
+            reverse_str(buf, j);
+            xs t = *xs_tmp(buf);
+
+            xs_concat(&t, xs_tmp(""), &zero);
+
+            string_number_add(&t, &mult, &mult);
+        }
+
+        xs_concat(&zero, xs_tmp(""), xs_tmp("0"));
+    }
+
+    if (out)
+        *out = mult;
+}
+
+static xs fib_sequence_ff(long long k)
+{
+    xs a = *xs_tmp("0");
+    xs b = *xs_tmp("1");
+    for (int i = 32 - __builtin_clz(k); i > 0; i--) {
+        xs t1;
+        string_number_mult(&b, xs_tmp("2"), &t1);
+        string_number_sub(&t1, &a, &t1);
+        string_number_mult(&a, &t1, &t1);
+
+        xs t2, t2_1, t2_2;
+        string_number_mult(&b, &b, &t2_1);
+        string_number_mult(&a, &a, &t2_2);
+        string_number_add(&t2_1, &t2_2, &t2);
+
+        a = t1;
+        b = t2;
+
+        if (k & (1 << (i - 1))) {
+            string_number_add(&a, &b, &t1);
+            a = b;
+            b = t1;
+        }
+    }
+    return a;
+}
+
 static xs fib_sequence(long long k)
 {
     xs f[k + 1];
@@ -140,9 +288,9 @@ static xs fib_sequence(long long k)
 
 static xs fib_time_proxy(long long k)
 {
-    kt = ktime_get();
-    xs result = fib_sequence(k);
-    kt = ktime_sub(ktime_get(), kt);
+    kt_proxy = ktime_get();
+    xs result = fib_sequence_ff(k);
+    kt_proxy = ktime_sub(ktime_get(), kt_proxy);
     return result;
 }
 
@@ -171,13 +319,11 @@ static ssize_t fib_read(struct file *file,
 
     char *fib = xs_data(&result);
 
-    // printk(KERN_INFO "fib_read %llu, %s\n", *offset, fib);
-
     copy_to_user(buf, fib, strlen(fib) + 1);
 
     xs_free(&result);
 
-    return 0;
+    return ktime_to_ns(kt_proxy);
 }
 
 /* write operation is skipped */
@@ -186,7 +332,25 @@ static ssize_t fib_write(struct file *file,
                          size_t size,
                          loff_t *offset)
 {
-    return ktime_to_ns(kt);
+    ktime_t kt;
+    xs fib;
+    switch (size) {
+    case 0:
+        kt = ktime_get();
+        fib = fib_sequence(*offset);
+        kt = ktime_sub(ktime_get(), kt);
+        xs_free(&fib);
+        break;
+    case 1:
+        kt = ktime_get();
+        fib = fib_sequence_ff(*offset);
+        kt = ktime_sub(ktime_get(), kt);
+        xs_free(&fib);
+        break;
+    default:
+        return 0;
+    }
+    return (ssize_t) ktime_to_ns(kt);
 }
 
 static loff_t fib_device_lseek(struct file *file, loff_t offset, int orig)
