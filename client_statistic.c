@@ -13,7 +13,7 @@ int main()
 {
     FILE *fp = fopen("./plot_input_statistic", "w");
     char write_buf[] = "testing writing";
-    int offset = 100;
+    int offset = 500;
 
     int fd = open(FIB_DEV, O_RDWR);
     if (fd < 0) {
