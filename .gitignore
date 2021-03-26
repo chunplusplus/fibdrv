@@ -36,3 +36,5 @@ client_statistic
 *.png
 plot_input
 plot_input_statistic
+syscall_input
+u2k_k2u

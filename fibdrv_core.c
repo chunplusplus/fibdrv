@@ -347,6 +347,9 @@ static ssize_t fib_write(struct file *file,
         kt = ktime_sub(ktime_get(), kt);
         xs_free(&fib);
         break;
+    case 2:
+        kt = ktime_get();
+        break;
     default:
         return 0;
     }
