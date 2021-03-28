@@ -270,7 +270,7 @@ static xs fib_sequence_ff(long long k)
 
 static xs fib_sequence(long long k)
 {
-    xs f[k + 1];
+    xs f[k + 2];
     f[0] = *xs_tmp("0");
     f[1] = *xs_tmp("1");
     for (int i = 2; i <= k; i++) {
