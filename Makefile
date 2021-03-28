@@ -9,7 +9,8 @@ PWD := $(shell pwd)
 
 GIT_HOOKS := .git/hooks/applied
 
-$(TARGET_MODULE)-objs := fibdrv_xs.o xs.o
+$(TARGET_MODULE)-objs := fibdrv_bn.o
+#$(TARGET_MODULE)-objs := fibdrv_xs.o xs.o
 
 all: $(GIT_HOOKS) client
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
