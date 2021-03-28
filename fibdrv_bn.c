@@ -29,7 +29,7 @@ static DEFINE_MUTEX(fib_mutex);
 
 static ktime_t kt_proxy;
 
-#define BN_SIZE 10
+#define BN_SIZE 6
 
 typedef struct bn {
     unsigned long long numbers[BN_SIZE];
@@ -75,13 +75,13 @@ void bn_add(bn *output, bn *x, bn *y)
     for (int i = 0; i < BN_SIZE; i++) {
         if (x->numbers[i] > ~output->numbers[i]) {
             if (i + 1 < BN_SIZE)
-                output->numbers[i + 1]++;
+                output->numbers[i + 1] = 1;
         }
         output->numbers[i] += x->numbers[i];
 
         if (y->numbers[i] > ~output->numbers[i]) {
             if (i + 1 < BN_SIZE)
-                output->numbers[i + 1]++;
+                output->numbers[i + 1] = 1;
         }
         output->numbers[i] += y->numbers[i];
     }
@@ -89,15 +89,37 @@ void bn_add(bn *output, bn *x, bn *y)
 
 bn fib_sequence(long long k)
 {
-    bn f[k + 2];
-    bn_init(&f[0]);
-    bn_init(&f[1]);
-    f[1].numbers[0] = 1;
+    bn lastlast, last, cur;
+    bn_init(&lastlast);
+    bn_init(&last);
+    last.numbers[0] = 1;
+
+    if (k == 0)
+        return lastlast;
+
+    if (k == 1)
+        return last;
+
     for (int i = 2; i <= k; i++) {
-        bn_init(&f[i]);
-        bn_add(&f[i], &f[i - 2], &f[i - 1]);
+        bn_init(&cur);
+        bn_add(&cur, &last, &lastlast);
+
+        lastlast = last;
+        last = cur;
     }
-    return f[k];
+
+    return cur;
+    /*
+        bn f[k + 2];
+        bn_init(&f[0]);
+        bn_init(&f[1]);
+        f[1].numbers[0] = 1;
+        for (int i = 2; i <= k; i++) {
+            bn_init(&f[i]);
+            //bn_add(&f[i], &f[i - 2], &f[i - 1]);
+        }
+        return f[k];
+    */
 }
 
 bn fib_sequence_ff(long long k)
