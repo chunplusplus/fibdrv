@@ -70,21 +70,125 @@ void bn_init(bn *src)
     }
 }
 
-void bn_add(bn *output, bn *x, bn *y)
+bn bn_add(bn *x, bn *y)
 {
-    for (int i = 0; i < BN_SIZE; i++) {
-        if (x->numbers[i] > ~output->numbers[i]) {
-            if (i + 1 < BN_SIZE)
-                output->numbers[i + 1] = 1;
+    bn output;
+    bn_init(&output);
+    int i = 0;
+    for (i = 0; i < BN_SIZE - 1; i++) {
+        if (x->numbers[i] > ~output.numbers[i]) {
+            // if (i + 1 < BN_SIZE)
+            output.numbers[i + 1] = 1;
         }
-        output->numbers[i] += x->numbers[i];
+        output.numbers[i] += x->numbers[i];
 
-        if (y->numbers[i] > ~output->numbers[i]) {
-            if (i + 1 < BN_SIZE)
-                output->numbers[i + 1] = 1;
+        if (y->numbers[i] > ~output.numbers[i]) {
+            // if (i + 1 < BN_SIZE)
+            output.numbers[i + 1] = 1;
         }
-        output->numbers[i] += y->numbers[i];
+        output.numbers[i] += y->numbers[i];
     }
+
+    output.numbers[i] += x->numbers[i];
+    output.numbers[i] += y->numbers[i];
+
+    return output;
+}
+
+bn bn_sub(bn *x, bn *y)
+{
+    bn output;
+    bn_init(&output);
+    int carry = 0;
+    for (int i = 0; i < BN_SIZE; i++) {
+        output.numbers[i] = x->numbers[i];
+
+        if (carry > 0) {
+            if (output.numbers[i] > 0) {
+                output.numbers[i]--;
+                carry = 0;
+            } else {
+                output.numbers[i] = ~output.numbers[i];
+            }
+        }
+
+        if (output.numbers[i] >= y->numbers[i]) {
+            output.numbers[i] -= y->numbers[i];
+        } else {
+            carry = 1;
+            output.numbers[i] += ~y->numbers[i] + 1;
+        }
+    }
+    return output;
+}
+
+bn bn_left_shift_64(bn *src)
+{
+    bn output;
+    bn_init(&output);
+    for (int i = 0; i < BN_SIZE - 1; i++) {
+        output.numbers[i + 1] = src->numbers[i];
+    }
+    return output;
+}
+
+bn bn_left_shift(bn *src, int size)
+{
+    bn output;
+    bn_init(&output);
+    for (int i = BN_SIZE - 1; i > 0; i--) {
+        output.numbers[i] = src->numbers[i] << size;
+        output.numbers[i] |= src->numbers[i - 1] >> (64 - size);
+    }
+    output.numbers[0] = src->numbers[0] << size;
+    return output;
+}
+
+bn bn_mult(bn *x, bn *y)
+{
+    bn output;
+    bn_init(&output);
+    bn tmp = *x;
+    for (int i = 0; i < BN_SIZE; i++) {
+        if (y->numbers[i] != 0) {
+            unsigned long long n = y->numbers[i];
+
+            int clz = __builtin_clzll(n);
+
+            while (n > 0) {
+                int ctz = __builtin_ctzll(n);
+
+                if (ctz == 0) {
+                    output = bn_add(&output, &tmp);
+                    tmp = bn_left_shift(&tmp, 1);
+                    n = n >> 1;
+                } else {
+                    n = n >> ctz;
+                    tmp = bn_left_shift(&tmp, ctz);
+                }
+            }
+
+            if (clz > 0) {
+                tmp = bn_left_shift(&tmp, clz);
+            }
+
+            /*
+                        for (int j = 0; j < 64; j++) {
+                            unsigned long long d = 1ull << j;
+                            int b_set = ((d & y->numbers[i]) > 0);
+
+                            if (b_set) {
+                                output = bn_add(&output, &tmp);
+                            }
+                            tmp = bn_left_shift(&tmp, 1);
+                        }
+            */
+        } else {
+            tmp = bn_left_shift_64(&tmp);
+        }
+    }
+
+    return output;
 }
 
 bn fib_sequence(long long k)
@@ -101,8 +205,7 @@ bn fib_sequence(long long k)
         return last;
 
     for (int i = 2; i <= k; i++) {
-        bn_init(&cur);
-        bn_add(&cur, &last, &lastlast);
+        cur = bn_add(&last, &lastlast);
 
         lastlast = last;
         last = cur;
@@ -124,11 +227,26 @@ bn fib_sequence(long long k)
 
 bn fib_sequence_ff(long long k)
 {
-    // for (int i = 32 - __builtin_clz(k); i > 0; i--) {
-    // if (k & (1 << (i - 1))) {
-    //}
-    //}
-    return fib_sequence(k);
+    bn t1, t2, a, b;
+    bn_init(&a);
+    bn_init(&b);
+    b.numbers[0] = 1;
+    for (int i = 32 - __builtin_clz(k); i > 0; i--) {
+        t1 = bn_add(&b, &b);
+        t1 = bn_sub(&t1, &a);
+        t1 = bn_mult(&t1, &a);
+        bn t2_b = bn_mult(&b, &b);
+        bn t2_a = bn_mult(&a, &a);
+        t2 = bn_add(&t2_b, &t2_a);
+        a = t1;
+        b = t2;
+        if (k & (1 << (i - 1))) {
+            t1 = bn_add(&a, &b);
+            a = b;
+            b = t1;
+        }
+    }
+    return a;
 }
 
 bn fib_time_proxy(long long k)
