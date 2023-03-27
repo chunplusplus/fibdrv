@@ -7,11 +7,21 @@
 
 #define FIB_DEV "/dev/fibonacci"
 
+#define LOGPHI (20898764025)
+#define LOGSQRT5 (34948500216)
+#define SCALE (100000000000)
+
+size_t cal_buf_size(int n)
+{
+    size_t digits = (n * LOGPHI - LOGSQRT5) / SCALE;
+    return digits + 2;
+}
+
 int main()
 {
     long long sz;
 
-    char buf[1];
+    char *buf;
     char write_buf[] = "testing writing";
     int offset = 100; /* TODO: try test something bigger than the limit */
 
@@ -27,21 +37,27 @@ int main()
     }
 
     for (int i = 0; i <= offset; i++) {
+        size_t size = cal_buf_size(i);
+        buf = malloc(size);
         lseek(fd, i, SEEK_SET);
-        sz = read(fd, buf, 1);
+        sz = read(fd, buf, size);
         printf("Reading from " FIB_DEV
                " at offset %d, returned the sequence "
-               "%lld.\n",
-               i, sz);
+               "%s.\n",
+               i, buf);
+        free(buf);
     }
 
     for (int i = offset; i >= 0; i--) {
+        size_t size = cal_buf_size(i);
+        buf = malloc(size);
         lseek(fd, i, SEEK_SET);
-        sz = read(fd, buf, 1);
+        sz = read(fd, buf, size);
         printf("Reading from " FIB_DEV
                " at offset %d, returned the sequence "
-               "%lld.\n",
-               i, sz);
+               "%s.\n",
+               i, buf);
+        free(buf);
     }
 
     close(fd);
