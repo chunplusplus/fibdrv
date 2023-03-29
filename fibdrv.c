@@ -7,7 +7,8 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/string.h>
-#include "bn2.h"
+/* #include "bn2.h" */
+#include "bn10.h"
 
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("National Cheng Kung University, Taiwan");
@@ -61,7 +62,7 @@ void bn_fib_fdoubling(bn *dest, unsigned int n)
     for (unsigned int i = 1U << 31; i; i >>= 1) {
         /* F(2k) = F(k) * [ 2 * F(k+1) – F(k) ] */
         bn_cpy(k1, f2);
-        bn_lshift(k1, 1);
+        bn_add(k1, k1, k1); /* bn_lshift(k1, 1); */
         bn_sub(k1, f1, k1);
         bn_mult(k1, f1, k1);
         /* F(2k+1) = F(k)^2 + F(k+1)^2 */
