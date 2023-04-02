@@ -9,7 +9,7 @@ PWD := $(shell pwd)
 
 GIT_HOOKS := .git/hooks/applied
 
-all: $(GIT_HOOKS) client
+all: $(GIT_HOOKS) client data
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 $(GIT_HOOKS):
@@ -39,3 +39,12 @@ check: all
 	$(MAKE) unload
 	@diff -u out scripts/expected.txt && $(call pass)
 	@scripts/verify.py
+
+data: data.c
+	$(CC) -o $@ $^
+
+plot: all
+	$(MAKE) unload
+	$(MAKE) load
+	@scripts/driver.py
+	$(MAKE) unload

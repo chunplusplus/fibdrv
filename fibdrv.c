@@ -22,6 +22,8 @@ static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
 
+static ktime_t kt;
+
 /* calc n-th Fibonacci number and save into dest */
 void bn_fib(bn *dest, unsigned int n)
 {
@@ -105,6 +107,7 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
+    kt = ktime_get();
     bn *fib = bn_alloc(1);
     bn_fib_fdoubling(fib, *offset);
     /* bn_fib(fib, *offset); */
@@ -113,7 +116,8 @@ static ssize_t fib_read(struct file *file,
     copy_to_user(buf, str, strlen(str) + 1);
 
     bn_free(fib);
-    return 0;
+    kt = ktime_sub(ktime_get(), kt);
+    return ktime_to_ns(kt);
 }
 
 /* write operation is skipped */
